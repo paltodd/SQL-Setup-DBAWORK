@@ -3,11 +3,11 @@ GO
 SET NOCOUNT ON
 
 /************************************************************************
- * Adds DBAWORK database and monitoring jobs to new servers.
+   Modify DL-DataServices@ to your email address before running
+   
+   Adds DBAWORK database and monitoring jobs to new servers.
 
-  Modify DL-DataServices@ to your email address before running
-
-  *version information (matches IndexAllFragmentation.sql)
+*version information (matches IndexAllFragmentation.sql)
 12/6/19	 5.34	Add Clustered Indexes to tb_job_status_checker, tb_database_status_checker, tb_sysalerts
 				DBAWORK - Database Check to run a 5 seconds after so not starting at same time as others (pass Ozar)
 12/12/19 5.35	Kline cleanup database_name to nvarchar(500)
