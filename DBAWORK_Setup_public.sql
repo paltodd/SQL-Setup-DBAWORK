@@ -7,6 +7,15 @@ SET NOCOUNT ON
 
   Modify DL-DataServices@ to your email address before running
 
+  *version information (matches IndexAllFragmentation.sql)
+12/6/19	 5.34	Add Clustered Indexes to tb_job_status_checker, tb_database_status_checker, tb_sysalerts
+				DBAWORK - Database Check to run a 5 seconds after so not starting at same time as others (pass Ozar)
+12/12/19 5.35	Kline cleanup database_name to nvarchar(500)
+				heap cleanup tb_databases
+				Cleanup code format and change table creates to do all indexes immediately and 
+				add Blocking check job and Query Store cleanup
+				clustered index to tb_monitor_sql_blocking_hx
+
  ************************************************************************/
 
 
@@ -16,11 +25,11 @@ SET NOCOUNT ON
 ---------------------------------------------------------
 IF  (EXISTS (SELECT name FROM msdb.dbo.sysoperators WHERE name = N'Data Services'))
 BEGIN
-        PRINT 'Data Services already exists as an operator'
+	PRINT 'Data Services already exists as an operator'
 END
 ELSE
 
-		EXEC msdb.dbo.sp_add_operator @name=N'Data Services', 
+	EXEC msdb.dbo.sp_add_operator @name=N'Data Services', 
                 @enabled                        = 1, 
                 @weekday_pager_start_time       = 0, 
                 @weekday_pager_end_time         = 235959, 
@@ -43,16 +52,11 @@ BEGIN
 END
 ELSE
 BEGIN
-CREATE DATABASE DBAWORK
---GO
-ALTER DATABASE DBAWORK MODIFY FILE (NAME = DBAWORK, 	NEWNAME = DBAWORK_data,	SIZE = 256MB, FILEGROWTH = 128)
---GO
-EXEC DBAWORK..sp_changedbowner 'sa'
---GO
+	CREATE DATABASE DBAWORK
+	ALTER DATABASE DBAWORK MODIFY FILE (NAME = DBAWORK, 	NEWNAME = DBAWORK_data,	SIZE = 256MB, FILEGROWTH = 128)
+	EXEC DBAWORK..sp_changedbowner 'sa'
 END
 GO
-
-
 
 
 ---------------------------------------------------------
@@ -68,15 +72,19 @@ BEGIN
 END
 GO
 
-CREATE TABLE tb_database_status_checker
-	(
-	row_id                  	INT     IDENTITY(1,1),
-	database_id			VARCHAR(10),
-	database_name			VARCHAR(256),
-	database_online			CHAR(1),
-	transaction_time		DATETIME
-	)
+CREATE TABLE [dbo].[tb_database_status_checker](
+	[row_id] [int] IDENTITY(1,1) NOT NULL,
+	[database_id] [varchar](10) NULL,
+	[database_name] [nvarchar](500) NULL,
+	[database_online] [char](1) NULL,
+	[transaction_time] [datetime] NULL,
+ CONSTRAINT [pk_ID_Database_Status] PRIMARY KEY CLUSTERED 
+(
+	[row_id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
 GO
+
 
 IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_job_status_checker')
 BEGIN
@@ -85,15 +93,20 @@ BEGIN
 END
 GO
 
-CREATE TABLE tb_job_status_checker 
-        (
-        row_id                  	INT     IDENTITY(1,1),
-        job_id                		VARCHAR(50),
-        job_name              		VARCHAR(256),
-        job_status           	 	CHAR(1),
-        transaction_time      		DATETIME 
-        ) 
+CREATE TABLE [dbo].[tb_job_status_checker](
+	[row_id] [int] IDENTITY(1,1) NOT NULL,
+	[job_id] [varchar](50) NULL,
+	[job_name] [varchar](256) NULL,
+	[job_status] [char](1) NULL,
+	[transaction_time] [datetime] NULL,
+ CONSTRAINT [pk_ID_Job_Status] PRIMARY KEY CLUSTERED 
+(
+	[row_id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
 GO
+
+
 IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_sysalerts')
 BEGIN
         DROP TABLE tb_sysalerts
@@ -101,27 +114,31 @@ BEGIN
 END     
 GO
 
-CREATE TABLE tb_sysalerts
-        (
-		row_id		                  	INT     IDENTITY(1,1),
-        id                              INT,
-        name                            NVARCHAR(128),
-        event_source                    NVARCHAR(100),
-        event_category_id               INT,
-        event_id                        INT,
-        message_id                      INT,
-        severity                        INT,
-        notification_message            NVARCHAR(512),
-        include_event_description       TINYINT,
-        database_name                   NVARCHAR(128),
-        event_description_keyword       NVARCHAR(100),
-        job_id                          uniqueidentifier,
-        has_notification                INT,
-        flags                           INT,
-        performance_condition           NVARCHAR(512),
-        category_id                     INT
-        )
+CREATE TABLE [dbo].[tb_sysalerts](
+	[row_id] [int] IDENTITY(1,1) NOT NULL,
+	[id] [int] NULL,
+	[name] [nvarchar](128) NULL,
+	[event_source] [nvarchar](100) NULL,
+	[event_category_id] [int] NULL,
+	[event_id] [int] NULL,
+	[message_id] [int] NULL,
+	[severity] [int] NULL,
+	[notification_message] [nvarchar](512) NULL,
+	[include_event_description] [tinyint] NULL,
+	[database_name] [nvarchar](500) NULL,
+	[event_description_keyword] [nvarchar](100) NULL,
+	[job_id] [uniqueidentifier] NULL,
+	[has_notification] [int] NULL,
+	[flags] [int] NULL,
+	[performance_condition] [nvarchar](512) NULL,
+	[category_id] [int] NULL,
+ CONSTRAINT [pk_ID_Sysalerts] PRIMARY KEY CLUSTERED 
+(
+	[row_id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
 GO
+
 
 IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_sysalerts_work')
 BEGIN
@@ -149,8 +166,8 @@ CREATE TABLE tb_sysalerts_work
         orig_notification_message       NVARCHAR(512),
         include_event_description       TINYINT,
         orig_include_event_description  TINYINT,
-        database_name                   NVARCHAR(128),
-        orig_database_name              NVARCHAR(128),
+        database_name                   NVARCHAR(500),  --NVARCHAR(128),
+        orig_database_name              NVARCHAR(500),  --NVARCHAR(128),
         event_description_keyword       NVARCHAR(100),
         orig_event_description_keyword  NVARCHAR(100),
         job_id                          uniqueidentifier,
@@ -166,6 +183,7 @@ CREATE TABLE tb_sysalerts_work
         ) 
 GO
 
+
 IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_sysalerts_summary')
 BEGIN
         DROP TABLE tb_sysalerts_summary
@@ -173,15 +191,19 @@ BEGIN
 END     
 GO
 
-CREATE TABLE tb_sysalerts_summary 
-        (
-        row_id                  	INT     IDENTITY(1,1),
-        id              		INT,
-        column_name     		VARCHAR(32),
-        value_one       		VARCHAR(512),
-        value_two       		VARCHAR(512)   
-        )
+CREATE TABLE [dbo].[tb_sysalerts_summary](
+	[row_id] [int] IDENTITY(1,1) NOT NULL,
+	[id] [int] NULL,
+	[column_name] [varchar](32) NULL,
+	[value_one] [varchar](512) NULL,
+	[value_two] [varchar](512) NULL,
+ CONSTRAINT [pk_ID_sysalerts_summary] PRIMARY KEY CLUSTERED 
+(
+	[row_id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
 GO
+
 
 IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_databases')
         BEGIN
@@ -190,16 +212,80 @@ IF EXISTS (SELECT * FROM DBAWORK.dbo.sysobjects WHERE name = 'tb_databases')
         END
 GO
 
-CREATE TABLE tb_databases
-        (
-        row_id                  	INT     IDENTITY(1,1),
-        database_name           	SYSNAME,
-        database_size_in_kb     	INT,                            -- Size of database, in kilobytes.
-        remarks                 	VARCHAR(254)
-        )
+CREATE TABLE [dbo].[tb_databases](
+	[row_id] [int] IDENTITY(1,1) NOT NULL,
+	[database_name] [nvarchar](500) NULL,
+	[database_size_in_kb] [int] NULL,
+	[remarks] [varchar](254) NULL,
+ CONSTRAINT [pk_ID_Databases] PRIMARY KEY CLUSTERED 
+(
+	[row_id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+) ON [PRIMARY]
 GO
 
 
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tb_sql_processes]') AND TYPE IN (N'U'))
+CREATE TABLE tb_sql_processes
+	(
+	spid			VARCHAR(10),
+	blocking_spid		VARCHAR(10),
+	login_name		VARCHAR(128),
+	login_time		datetime,
+	last_batch		datetime,
+	host_name		VARCHAR(128),
+	program_name		VARCHAR(128),
+	database_name		VARCHAR(128),
+	blocking_statement	VARCHAR(4000),
+	blocking_duration	VARCHAR(18)
+	)
+	
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tb_monitor_sql_blocking]') AND TYPE IN (N'U'))
+CREATE TABLE tb_monitor_sql_blocking
+	(
+	spid			VARCHAR(10),
+	blocking_spid		VARCHAR(10),
+	login_name		VARCHAR(128),
+	login_time		datetime,
+	last_batch		datetime,
+	host_name		VARCHAR(128),
+	program_name		VARCHAR(128),
+	database_name		VARCHAR(128),
+	blocking_statement	VARCHAR(4000),
+	blocking_duration	VARCHAR(18),
+	block_id		VARCHAR(3),
+	block_level		VARCHAR(3)
+	)
+	
+IF NOT EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[tb_monitor_sql_blocking_hx]') AND TYPE IN (N'U'))
+CREATE TABLE tb_monitor_sql_blocking_hx
+	(
+	spid			VARCHAR(10),
+	blocking_spid		VARCHAR(10),
+	login_name		VARCHAR(128),
+	login_time		datetime,
+	last_batch		datetime,
+	host_name		VARCHAR(128),
+	program_name		VARCHAR(128),
+	database_name		VARCHAR(128),
+	blocking_statement	VARCHAR(4000),
+	blocking_duration	VARCHAR(18),
+	block_id		VARCHAR(3),
+	block_level		VARCHAR(3),
+	report_date_time	DATETIME NOT NULL CONSTRAINT DF_Lock_monitor_Occurs2 DEFAULT (GETDATE())
+	)
+
+CREATE UNIQUE CLUSTERED INDEX [idx_blocking_hx_spid_blockid_datetime] ON [dbo].[tb_monitor_sql_blocking_hx]
+(
+	[spid] ASC,
+	[block_id] ASC,
+	[report_date_time] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, SORT_IN_TEMPDB = OFF, IGNORE_DUP_KEY = OFF, DROP_EXISTING = OFF, ONLINE = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON) ON [PRIMARY]
+GO
+
+---------------------------------------------------------
+--    Create Stored Procedures
+---------------------------------------------------------
 
 IF  EXISTS (SELECT * FROM sys.objects WHERE object_id = OBJECT_ID(N'[dbo].[bp_database_status_checker]') AND type in (N'P', N'PC'))
 BEGIN
@@ -217,7 +303,7 @@ SET NOCOUNT ON
 -- variable declaration
 -----------------------
 DECLARE @email_profile	VARCHAR(100),
-	@email_address  VARCHAR(50),
+		@email_address  VARCHAR(50),
         @email_subject  VARCHAR(100),
         @email_message  VARCHAR(150),
         @database_name	VARCHAR(100),
@@ -351,13 +437,13 @@ SET NOCOUNT ON
 -- variable declaration
 -----------------------
 DECLARE @email_profile	VARCHAR(100),
-	@email_address  VARCHAR(50),
+		@email_address  VARCHAR(50),
         @email_subject  VARCHAR(100),
         @email_message  VARCHAR(150),
         @job_name       VARCHAR(100),
         @name           VARCHAR(100)
 
-SET	@email_profile	= REPLACE(@@SERVERNAME, '\','$')
+SET		@email_profile	= REPLACE(@@SERVERNAME, '\','$')
 SET     @email_address	= 'DL-DataServices@'
 
 -- missing tasks
@@ -463,6 +549,7 @@ END
 GO
 
 
+
 if exists (select * from dbo.sysobjects where id = object_id(N'dbo.bp_mail_check') and OBJECTPROPERTY(id, N'IsProcedure') = 1)
 BEGIN
         DROP PROCEDURE dbo.bp_mail_check
@@ -535,6 +622,8 @@ BEGIN
         PRINT 'dropping procedure bp_server_alerts_check'
 END
 GO
+
+
 
 CREATE PROCEDURE bp_server_alerts_check @refresh_alerts VARCHAR(6) = NULL AS
 
@@ -725,6 +814,262 @@ ELSE
         END
 
 SET NOCOUNT OFF
+END
+GO
+
+
+
+if exists (select * from sys.objects where name = 'bp_Monitor_SQL_Blocking' and type = 'p')
+    drop procedure bp_Monitor_SQL_Blocking
+GO
+
+
+CREATE PROCEDURE [dbo].[bp_Monitor_SQL_Blocking] AS
+BEGIN
+
+SET NOCOUNT ON
+
+--Todd Palecek modified to only send blocking email if blocking exceeds 1 minute; 3/31/2015
+--Todd Palecek only send email if blocking exceeds 4 minutes 10/31/19
+--increased blocking duration to varchar 18 from 15 8/7/15 tmp
+
+SET NOCOUNT ON
+
+---------------------------------------------------------------------------------------------------------------------------------
+-- monitor blocking
+---------------------------------------------------------------------------------------------------------------------------------
+
+-- clear work tables
+--------------------
+TRUNCATE TABLE DBAWORK..tb_sql_processes
+TRUNCATE TABLE DBAWORK..tb_monitor_sql_blocking
+
+-- load active processes for evaluation
+---------------------------------------
+INSERT INTO tb_sql_processes(spid, blocking_spid, login_name, login_time, last_batch, host_name, program_name, database_name, blocking_statement, blocking_duration)
+SELECT	s.spid														as spid, 
+	s.blocked														as blocking_spid,
+	s.loginame														as login_name, 
+	s.login_time													as login_time,
+	s.last_batch													as last_batch,
+	s.hostname														as host_name,
+	s.program_name													as program_name, 
+	DB_NAME(s.dbid)													as database_name,
+	CAST(p.text AS VARCHAR(4000))									as blocking_statement,
+	CASE WHEN SUM(CAST(DATEDIFF(SECOND,last_batch, getdate()) AS INT)) / 3600 < 10 THEN '0' 
+		ELSE	'' 
+		END		+
+                RTRIM(SUM(CAST(DATEDIFF(SECOND,last_batch, getdate())			AS INT)) / 3600)		+ 'h ' +
+                RIGHT('0'+ RTRIM((SUM(CAST(DATEDIFF(SECOND,last_batch, getdate())	AS INT)) % 3600) / 60),2)	+ 'm ' + 
+                RIGHT('0'+ RTRIM((SUM(CAST(DATEDIFF(SECOND,last_batch, getdate())	AS INT)) % 3600) % 60),2)	+ 's '	as blocking_duration
+FROM	sys.sysprocesses 				as s
+	CROSS APPLY sys.dm_exec_sql_text (sql_handle)	as p
+WHERE	s.spid > 50 
+GROUP BY s.spid, s.blocked, s.loginame, s.hostname, s.dbid, s.program_name, p.text, s.last_batch, s.login_time;
+
+---------------------------------------------------------------------------------------------------------------------------------
+-- formulate blocking with recursion and CTE
+---------------------------------------------------------------------------------------------------------------------------------
+WITH Blocking(spid, blocking_spid, login_name, host_name, program_name, database_name, blocking_statement, blocking_duration, block_id, block_level)
+AS
+(
+SELECT	s.spid, 
+	s.blocking_spid, 
+	s.login_name,
+	s.host_name,
+	s.program_name,
+	s.database_name,
+	s.blocking_statement,
+	s.blocking_duration,
+	ROW_NUMBER() OVER(ORDER BY s.spid)	as block_id,
+	0 as block_level
+FROM	DBAWORK..tb_sql_processes	s
+	JOIN DBAWORK..tb_sql_processes s1 ON s.spid = s1.blocking_spid
+WHERE	s.blocking_spid = 0
+
+UNION ALL
+
+SELECT	s.spid, 
+	s.blocking_spid, 
+	s.login_name,
+	s.host_name,
+	s.program_name,
+	s.database_name,
+	s.blocking_statement,
+	s.blocking_duration,
+	b.block_id				as block_id,
+	b.block_level + 1		as block_level
+FROM	DBAWORK..tb_sql_processes	s
+	JOIN Blocking			b ON s.blocking_spid = b.spid
+WHERE	s.blocking_spid > 0
+)
+
+---------------------------------------------------------------------------------------------------------------------------------
+-- Transfer info to reporting table
+---------------------------------------------------------------------------------------------------------------------------------
+INSERT INTO DBAWORK..tb_monitor_sql_blocking (spid, blocking_spid, login_name, host_name, program_name, database_name, blocking_statement, blocking_duration, block_id, block_level)
+SELECT 	CAST(ISNULL(b.spid, '')	 								as CHAR(4))		as [Blocked SPID], 
+	CAST(ISNULL(b.blocking_spid, '')	 						as CHAR(4))		as [Blocking SPID], 
+	CAST(ISNULL(b.login_name, '') 								as CHAR(30))		as [Blocked Login], 
+	CAST(ISNULL(b.host_name, '')	 							as CHAR(20))		as [Blocked Host], 
+	CAST(ISNULL(b.program_name, '')	 							as CHAR(20))		as [Program Name], 
+ 	CAST(ISNULL(b.database_name, '')							as CHAR(20))		as [DB Name],
+ 	CAST(ISNULL(REPLACE(REPLACE(blocking_statement, CHAR(10), ' '), CHAR(13), ' '), '')	as CHAR(1000))		as [Blocked Cmd],
+	CAST(ISNULL(b.blocking_duration, '')							as CHAR(25))		as [Blocked Duration],
+	b.block_id, 
+	b.block_level
+FROM	Blocking	as b
+WHERE	b.blocking_duration	<> '00h 00m 00s' 
+ORDER BY b.block_id, b.block_level
+
+---------------------------------------------------------------------------------------------------------------------------------
+-- write to history all blocking
+---------------------------------------------------------------------------------------------------------------------------------
+IF (SELECT COUNT(*) FROM DBAWORK..tb_monitor_sql_blocking) > 1
+	BEGIN
+	
+	-- groom history table
+	---------------------
+	DELETE	DBAWORK..tb_monitor_sql_blocking_hx 
+	WHERE	report_date_time < GETDATE() - 7
+
+	-- load history table
+	---------------------	
+	INSERT INTO	DBAWORK..tb_monitor_sql_blocking_hx (spid, blocking_spid, login_name, host_name, program_name, database_name, blocking_statement, blocking_duration, block_id, block_level)
+	SELECT	spid, blocking_spid, login_name, host_name, program_name, database_name, blocking_statement, blocking_duration, block_id, block_level 
+	FROM	DBAWORK..tb_monitor_sql_blocking
+	END
+
+---------------------------------------------------------------------------------------------------------------------------------
+-- send email if blocking found greater than 1 minute
+-- Todd Palecek; change the ... as int) > 0) to adjust blocking interval to track. 0 = 1 minute, 1 = 2 minutes, etc.
+---------------------------------------------------------------------------------------------------------------------------------
+IF (SELECT COUNT(*) FROM DBAWORK..tb_monitor_sql_blocking where cast(left(blocking_duration,2) + substring(blocking_duration,5,2) as int) > 0) > 4
+	BEGIN
+	DECLARE	@EmailRecipients	VARCHAR(100),
+		@EmailMessage		VARCHAR(3000),
+		@EmailSubject		VARCHAR(200),
+		@EmailWidth		INT,
+		@EmailQuery		VARCHAR(3000)
+
+
+		SET	@EmailRecipients =	'tpalecek@silverstarbrands.com'
+		SET	@EmailSubject	 =	@@SERVERNAME + ' Blocking Notification'
+		SET	@EmailMessage	 =	'The Following SPID''s Are Responsible For Blocking On ' + @@SERVERNAME + CHAR(10) + REPLICATE('-',70) + CHAR(10)
+		SELECT	@EmailQuery 	 =	'
+						SET NOCOUNT ON
+
+						SELECT	b.block_id											as [Blocking ID],
+							CAST(b.spid	 								as CHAR(4))	as [Blocking SPID], 
+							CAST(b.login_name 								as CHAR(35))	as [Blocking Login], 
+							CAST(b.host_name	 							as CHAR(20))	as [Blocking Host], 
+							CAST(REPLACE(REPLACE(blocking_statement, CHAR(10), '' ''), CHAR(13), '' '')	as CHAR(30))	as [Blocking Statement],
+							''   '' + CAST(b.blocking_duration						as CHAR(18))	as [Blocking Duration]
+						FROM	DBAWORK..tb_monitor_sql_blocking	as b
+						WHERE 	b.blocking_spid = 0
+						ORDER BY b.block_id, b.block_level
+
+						PRINT	''''
+						PRINT	''''
+						
+						SELECT	'''' as ''The Following SPID''''s Are Being Blocked As A Result:''
+
+
+						SELECT	b.block_id											as [Blocking ID],
+							b.block_level											as [Blocking Level],
+							CAST(b.spid	 								as CHAR(4))	as [Blocked SPID], 
+							CAST(b.login_name 								as CHAR(15))	as [Blocked Login], 
+							CAST(b.host_name	 							as CHAR(15))	as [Blocked Host], 
+							CAST(b.database_name								as CHAR(15))	as [DB Name],
+							CAST(REPLACE(REPLACE(blocking_statement, CHAR(10), '' ''), CHAR(13), '' '')	as CHAR(20))	as [Blking Cmd],
+							''   '' + CAST(b.blocking_duration						as CHAR(18))	as [Blocking Duration]
+						FROM	DBAWORK..tb_monitor_sql_blocking	as b
+						WHERE 	b.blocking_spid > 0
+						ORDER BY b.block_id, b.block_level
+						'
+		EXEC msdb.dbo.sp_send_dbmail   	@profile_name 		= @@SERVERNAME,
+						@recipients 		= @EmailRecipients,
+						@subject 		= @EmailSubject,
+						@body 			= @EmailMessage,
+						@query			= @EmailQuery,
+						@importance 		= 'Normal',
+						@query_result_width	= 250
+	END
+END
+
+GO
+
+
+
+if exists (select * from sys.objects where name = 'bp_QueryStore_Purge' and type = 'p')
+    drop procedure bp_QueryStore_Purge
+GO
+
+
+/****** Object:  StoredProcedure [dbo].[bp_QueryStore_Purge]    Script Date: 12/9/2019 1:25:56 PM ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+
+--exec bp_QueryStore_Purge
+CREATE PROCEDURE [dbo].[bp_QueryStore_Purge] AS
+BEGIN
+
+SET NOCOUNT ON;
+
+--Todd Palecek 11/27/19 to purge force literal plans from query store
+
+
+DECLARE @query_sql_text TABLE (sql_text varchar(100), QueryCount INT, PlanCount INT);
+declare @query_sql_text_state varchar(100);
+
+--count of query plans by stemmed query text
+INSERT INTO @query_sql_text  (sql_text, QueryCount, PlanCount)
+select top 10 left(txt.query_sql_text,50), count(distinct Pl.query_id) QueryCount, count(distinct Pl.plan_id) PlanCount
+FROM sys.query_store_plan AS Pl  
+JOIN sys.query_store_query AS Qry ON Pl.query_id = Qry.query_id  
+JOIN sys.query_store_query_text AS Txt ON Qry.query_text_id = Txt.query_text_id
+group by left(txt.query_sql_text,50)
+having count(distinct Pl.query_id) > 1000;
+--order by count(distinct Pl.plan_id) desc;  
+
+--loop through all query plans in @query_sql_text
+While (Select Count(*) From @query_sql_text) > 0
+Begin
+
+	Select Top 1 @query_sql_text_state = sql_text From @query_sql_text order by sql_text asc
+	--print @query_sql_text_state
+
+	--remove the query_ids from query store
+	DECLARE @id int
+	DECLARE adhoc_queries_cursor CURSOR STATIC
+	FOR
+	 select top 100 Pl.query_id
+	 FROM sys.query_store_plan AS Pl  
+	 JOIN sys.query_store_query AS Qry ON Pl.query_id = Qry.query_id  
+	 JOIN sys.query_store_query_text AS Txt ON Qry.query_text_id = Txt.query_text_id
+	 where left(trim(txt.query_sql_text),50) = @query_sql_text_state 
+	 group by Pl.query_id
+	 order by min(Qry.last_execution_time) asc
+
+	OPEN adhoc_queries_cursor;
+	FETCH NEXT FROM adhoc_queries_cursor INTO @id;
+	WHILE @@fetch_status = 0
+		BEGIN
+			--PRINT @id
+			EXEC sp_query_store_remove_query @id
+			FETCH NEXT FROM adhoc_queries_cursor INTO @id
+		END
+	CLOSE adhoc_queries_cursor;
+	DEALLOCATE adhoc_queries_cursor;
+
+delete Top (1) From @query_sql_text where sql_text = @query_sql_text_state
+
+End
+
 END
 GO
 
@@ -1046,7 +1391,7 @@ EXEC @ReturnCode = msdb.dbo.sp_add_jobschedule @job_id=@jobId, @name=N'6 Hours',
 		@freq_recurrence_factor=0, 
 		@active_start_date=20011115, 
 		@active_end_date=99991231, 
-		@active_start_time=0, 
+		@active_start_time=5, 
 		@active_end_time=235959
 IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
 EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
@@ -1119,6 +1464,148 @@ QuitWithRollback:
 EndSave:
 
 GO
+
+
+
+
+
+USE [msdb]
+GO
+
+BEGIN TRANSACTION
+DECLARE @ReturnCode INT
+SELECT @ReturnCode = 0
+
+IF NOT EXISTS (SELECT name FROM msdb.dbo.syscategories WHERE name=N'[Uncategorized (Local)]' AND category_class=1)
+BEGIN
+EXEC @ReturnCode = msdb.dbo.sp_add_category @class=N'JOB', @type=N'LOCAL', @name=N'[Uncategorized (Local)]'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+
+END
+
+DECLARE @jobId BINARY(16)
+EXEC @ReturnCode =  msdb.dbo.sp_add_job @job_name=N'DBAWORK - Monitor SQL Process Blocking', 
+		@enabled=1, 
+		@notify_level_eventlog=2, 
+		@notify_level_email=2, 
+		@notify_level_netsend=0, 
+		@notify_level_page=0, 
+		@delete_level=0, 
+		@description=N'No description available.', 
+		@category_name=N'[Uncategorized (Local)]', 
+		@owner_login_name=N'sa', 
+		@notify_email_operator_name=N'Data Services', @job_id = @jobId OUTPUT
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'Run bp_Monitor_SQL_Blocking', 
+		@step_id=1, 
+		@cmdexec_success_code=0, 
+		@on_success_action=1, 
+		@on_success_step_id=0, 
+		@on_fail_action=2, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=1, 
+		@os_run_priority=0, @subsystem=N'TSQL', 
+		@command=N'EXEC DBAWORK..bp_Monitor_SQL_Blocking', 
+		@database_name=N'DBAWORK', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_update_job @job_id = @jobId, @start_step_id = 1
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobschedule @job_id=@jobId, @name=N'Every Minute', 
+		@enabled=1, 
+		@freq_type=4, 
+		@freq_interval=1, 
+		@freq_subday_type=4, 
+		@freq_subday_interval=1, 
+		@freq_relative_interval=0, 
+		@freq_recurrence_factor=0, 
+		@active_start_date=20080519, 
+		@active_end_date=99991231, 
+		@active_start_time=53, 
+		@active_end_time=235959
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+COMMIT TRANSACTION
+GOTO EndSave
+QuitWithRollback:
+    IF (@@TRANCOUNT > 0) ROLLBACK TRANSACTION
+EndSave:
+
+GO
+
+
+
+USE [msdb]
+GO
+
+/****** Object:  Job [DBAWORK - Query Store Cleanup]    Script Date: 12/13/2019 1:56:06 PM ******/
+BEGIN TRANSACTION
+DECLARE @ReturnCode INT
+SELECT @ReturnCode = 0
+/****** Object:  JobCategory [[Uncategorized (Local)]]    Script Date: 12/13/2019 1:56:06 PM ******/
+IF NOT EXISTS (SELECT name FROM msdb.dbo.syscategories WHERE name=N'[Uncategorized (Local)]' AND category_class=1)
+BEGIN
+EXEC @ReturnCode = msdb.dbo.sp_add_category @class=N'JOB', @type=N'LOCAL', @name=N'[Uncategorized (Local)]'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+
+END
+
+DECLARE @jobId BINARY(16)
+EXEC @ReturnCode =  msdb.dbo.sp_add_job @job_name=N'DBAWORK - Query Store Cleanup', 
+		@enabled=1, 
+		@notify_level_eventlog=0, 
+		@notify_level_email=0, 
+		@notify_level_netsend=0, 
+		@notify_level_page=0, 
+		@delete_level=0, 
+		@description=N'No description available.', 
+		@category_name=N'[Uncategorized (Local)]', 
+		@owner_login_name=N'sa', @job_id = @jobId OUTPUT
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+/****** Object:  Step [Remove Plans that are using force literals or equivalent]    Script Date: 12/13/2019 1:56:06 PM ******/
+EXEC @ReturnCode = msdb.dbo.sp_add_jobstep @job_id=@jobId, @step_name=N'Remove Plans that are using force literals or equivalent', 
+		@step_id=1, 
+		@cmdexec_success_code=0, 
+		@on_success_action=1, 
+		@on_success_step_id=0, 
+		@on_fail_action=1, 
+		@on_fail_step_id=0, 
+		@retry_attempts=0, 
+		@retry_interval=0, 
+		@os_run_priority=0, @subsystem=N'TSQL', 
+		@command=N'exec bp_QueryStore_Purge', 
+		@database_name=N'DBAWORK', 
+		@flags=0
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_update_job @job_id = @jobId, @start_step_id = 1
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobschedule @job_id=@jobId, @name=N'Daily', 
+		@enabled=1, 
+		@freq_type=4, 
+		@freq_interval=1, 
+		@freq_subday_type=4, 
+		@freq_subday_interval=10, 
+		@freq_relative_interval=0, 
+		@freq_recurrence_factor=0, 
+		@active_start_date=20191118, 
+		@active_end_date=99991231, 
+		@active_start_time=71500, 
+		@active_end_time=231559
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+EXEC @ReturnCode = msdb.dbo.sp_add_jobserver @job_id = @jobId, @server_name = N'(local)'
+IF (@@ERROR <> 0 OR @ReturnCode <> 0) GOTO QuitWithRollback
+COMMIT TRANSACTION
+GOTO EndSave
+QuitWithRollback:
+    IF (@@TRANCOUNT > 0) ROLLBACK TRANSACTION
+EndSave:
+GO
+
+
+
+
 
 
 ----------------------------------------------------------------
